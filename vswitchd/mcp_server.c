@@ -115,11 +115,12 @@ handle_get_flows(int client_fd)
     free(flows_str);
 }
 
-static void handle_get_port_stats(int client_fd)
+static void
+handle_get_port_stats(int client_fd)
 {
     struct json *result = json_object_create();
-    json_object_put_string(result, "tool",   "get_port_stats");
-    json_object_put_string(result, "result", "stub");
+    json_object_put_string(result, "tool", "get_port_stats");
+    json_object_put(result, "stats", bridge_get_port_stats());
     send_json(client_fd, 200, "OK", result);
     json_destroy(result);
 }

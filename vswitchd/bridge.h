@@ -22,6 +22,7 @@ struct simap;
 
 void bridge_init(const char *remote);
 char *bridge_get_all_flows(void);
+struct json *bridge_get_port_stats(void);
 void bridge_exit(bool delete_datapath);
 struct ovsdb_idl *bridge_get_idl(void);
 void bridge_run(void);

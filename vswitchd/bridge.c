@@ -44,6 +44,7 @@
 #include "ofproto/bond.h"
 #include "ofproto/ofproto.h"
 #include "openvswitch/dynamic-string.h"
+#include "openvswitch/json.h"
 #include "openvswitch/list.h"
 #include "openvswitch/meta-flow.h"
 #include "openvswitch/ofp-print.h"
@@ -422,6 +423,53 @@ bridge_get_all_flows(void)
 
     /* ds_steal_cstr gives us a malloc'd string — caller must free() it */
     return ds_steal_cstr(&result);
+}
+
+struct json *
+bridge_get_port_stats(void)
+{
+    struct bridge *br;
+    struct json *result = json_array_create_empty();
+
+    HMAP_FOR_EACH (br, node, &all_bridges) {
+        struct port *port;
+
+        HMAP_FOR_EACH (port, hmap_node, &br->ports) {
+            struct iface *iface;
+
+            LIST_FOR_EACH (iface, port_elem, &port->ifaces) {
+                struct netdev_stats stats;
+
+                if (netdev_get_stats(iface->netdev, &stats) != 0) {
+                    continue;
+                }
+
+                struct json *entry = json_object_create();
+                json_object_put_string(entry, "name",   iface->name);
+                json_object_put_string(entry, "bridge", br->name);
+                json_object_put(entry, "rx_packets",
+                                json_integer_create(stats.rx_packets));
+                json_object_put(entry, "tx_packets",
+                                json_integer_create(stats.tx_packets));
+                json_object_put(entry, "rx_bytes",
+                                json_integer_create(stats.rx_bytes));
+                json_object_put(entry, "tx_bytes",
+                                json_integer_create(stats.tx_bytes));
+                json_object_put(entry, "rx_errors",
+                                json_integer_create(stats.rx_errors));
+                json_object_put(entry, "tx_errors",
+                                json_integer_create(stats.tx_errors));
+                json_object_put(entry, "rx_dropped",
+                                json_integer_create(stats.rx_dropped));
+                json_object_put(entry, "tx_dropped",
+                                json_integer_create(stats.tx_dropped));
+
+                json_array_add(result, entry);
+            }
+        }
+    }
+
+    return result;
 }
 
 static void
