@@ -300,6 +300,213 @@ Expected output:
 
 ---
 
+Module 5 – SET Operations
+==========================
+
+Files Modified
+--------------
+
+* ``vswitchd/mcp_server.c``
+    * Added ``handle_set_vlan()`` — extracts ``port`` and ``vlan``
+      arguments, calls ``bridge_set_vlan()``, returns result.
+    * Added ``handle_set_port_state()`` — extracts ``port`` and
+      ``state`` arguments (``"up"`` or ``"down"``), calls
+      ``bridge_set_port_state()``, returns result.
+    * Added both tools to ``mcp_dispatch()``.
+
+* ``vswitchd/bridge.c``
+    * Added ``bridge_set_vlan()`` — finds port in OVSDB via
+      ``OVSREC_PORT_FOR_EACH``, writes tag using
+      ``ovsrec_port_set_tag()``, commits transaction, then calls
+      ``port_configure()`` to push change into ofproto/datapath
+      immediately.
+    * Added ``bridge_set_port_state()`` — finds port via
+      ``port_lookup()``, walks all interfaces on the port, calls
+      ``netdev_turn_flags_on()`` or ``netdev_turn_flags_off()``
+      with ``NETDEV_UP`` flag.
+    * Registered ``ovsrec_port_col_tag`` with
+      ``ovsdb_idl_add_column()`` in ``bridge_init()`` to allow
+      writes under ``ovsdb_idl_verify_write_only()`` mode.
+
+* ``vswitchd/bridge.h``
+    * Declared ``bridge_set_vlan()``.
+    * Declared ``bridge_set_port_state()``.
+
+Functionality
+-------------
+
+* **Goal:** Allow MCP to modify live switch configuration.
+* **Tools added:**
+
+  +----------------------+------------------------------------------+
+  | Tool                 | Description                              |
+  +======================+==========================================+
+  | ``set_vlan``         | Sets VLAN tag on a port and applies      |
+  |                      | config to datapath immediately           |
+  +----------------------+------------------------------------------+
+  | ``set_port_state``   | Enables or disables a port by setting    |
+  |                      | the ``NETDEV_UP`` flag on its netdev     |
+  +----------------------+------------------------------------------+
+
+Implementation Notes
+--------------------
+
+**set_vlan — Two Step Process:**
+
+.. code-block:: text
+
+    set_vlan (port, vlan_id)
+         │
+         ▼
+    Step 1: ovsrec_port_set_tag() + ovsdb_idl_txn_commit_block()
+            → writes tag value into OVSDB database
+         │
+         ▼
+    Step 2: port_configure()
+            → reads config from OVSDB and pushes into ofproto/datapath
+            → change takes effect immediately without waiting for
+              next reconfigure cycle
+
+**set_port_state — netdev flags:**
+
+.. code-block:: text
+
+    set_port_state (port, up/down)
+         │
+         ▼
+    port_lookup() → struct port *
+         │
+         ▼
+    LIST_FOR_EACH iface in port->ifaces
+         │
+         ▼
+    netdev_turn_flags_on(iface->netdev, NETDEV_UP)   ← if "up"
+    netdev_turn_flags_off(iface->netdev, NETDEV_UP)  ← if "down"
+
+**Bug Fixed — Port:tag column not writable:**
+
+``ovsdb_idl_verify_write_only()`` is set in ``bridge_init()``,
+which requires every writable column to be explicitly registered
+via ``ovsdb_idl_add_column()``. The ``Port:tag`` column was only
+registered with ``ovsdb_idl_omit_alert()`` but not
+``ovsdb_idl_add_column()``, causing the error:
+
+.. code-block:: text
+
+    Bug: Attempt to write to a read/write column (Port:tag)
+    when explicitly configured not to.
+
+Fix: added ``ovsdb_idl_add_column(idl, &ovsrec_port_col_tag)``
+in ``bridge_init()``.
+
+Error Handling
+--------------
+
++------------------------------+------+------------------------------+
+| Condition                    | Code | Response                     |
++==============================+======+==============================+
+| Missing ``port`` argument    | 400  | ``{"error":"missing port     |
+|                              |      | argument"}``                 |
++------------------------------+------+------------------------------+
+| Missing ``vlan`` argument    | 400  | ``{"error":"missing vlan     |
+|                              |      | argument"}``                 |
++------------------------------+------+------------------------------+
+| Missing ``state`` argument   | 400  | ``{"error":"missing state    |
+|                              |      | argument"}``                 |
++------------------------------+------+------------------------------+
+| Invalid state value          | 400  | ``{"error":"state must be    |
+|                              |      | 'up' or 'down'"}``           |
++------------------------------+------+------------------------------+
+| Port not found               | 404  | ``{"error":"port not         |
+|                              |      | found"}``                    |
++------------------------------+------+------------------------------+
+| Transaction failed           | 500  | ``{"error":"port not         |
+|                              |      | found"}``                    |
++------------------------------+------+------------------------------+
+
+Test Endpoints
+--------------
+
+**set_vlan**
+
+.. code-block:: bash
+
+    curl -X POST http://localhost:8080/mcp \
+      -H "Content-Type: application/json" \
+      -d '{"tool": "set_vlan", "arguments": {"port": "test-port", "vlan": 100}}'
+
+Expected output:
+
+.. code-block:: json
+
+    {"port":"test-port","status":"ok","vlan":100,"tool":"set_vlan"}
+
+Verify:
+
+.. code-block:: bash
+
+    sudo ovs-vsctl get port test-port tag
+
+Expected output:
+
+.. code-block:: text
+
+    100
+
+**set_port_state — disable**
+
+.. code-block:: bash
+
+    curl -X POST http://localhost:8080/mcp \
+      -H "Content-Type: application/json" \
+      -d '{"tool": "set_port_state", "arguments": {"port": "test-port", "state": "down"}}'
+
+Expected output:
+
+.. code-block:: json
+
+    {"state":"down","port":"test-port","status":"ok","tool":"set_port_state"}
+
+Verify:
+
+.. code-block:: bash
+
+    sudo ovs-vsctl get interface test-port admin_state
+
+Expected output:
+
+.. code-block:: text
+
+    down
+
+**set_port_state — enable**
+
+.. code-block:: bash
+
+    curl -X POST http://localhost:8080/mcp \
+      -H "Content-Type: application/json" \
+      -d '{"tool": "set_port_state", "arguments": {"port": "test-port", "state": "up"}}'
+
+Expected output:
+
+.. code-block:: json
+
+    {"state":"up","port":"test-port","status":"ok","tool":"set_port_state"}
+
+Verify:
+
+.. code-block:: bash
+
+    sudo ovs-vsctl get interface test-port admin_state
+
+Expected output:
+
+.. code-block:: text
+
+    up
+
+---
+
 Setup and Run
 =============
 
