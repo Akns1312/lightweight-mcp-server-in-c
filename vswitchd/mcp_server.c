@@ -202,6 +202,77 @@ handle_set_port_state(int client_fd, struct json *arguments)
     send_json(client_fd, 200, "OK", result);
     json_destroy(result);
 }
+
+static void
+handle_get_tools(int client_fd)
+{
+    struct json *result = json_object_create();
+    json_object_put_string(result, "action", "switch.get_tools");
+
+    struct json *tools_array = json_array_create_empty();
+
+    // get_ports tool
+    struct json *get_ports_tool = json_object_create();
+    json_object_put_string(get_ports_tool, "name", "get_ports");
+    json_object_put_string(get_ports_tool, "description", 
+        "Get the list of all ports and interfaces on the OVS switch. "
+        "Returns each interface's name, type, and which bridge it belongs to.");
+    struct json *get_ports_args = json_object_create();
+    json_object_put(get_ports_tool, "arguments", get_ports_args);
+    json_array_add(tools_array, get_ports_tool);
+
+    // get_flows tool
+    struct json *get_flows_tool = json_object_create();
+    json_object_put_string(get_flows_tool, "name", "get_flows");
+    json_object_put_string(get_flows_tool, "description",
+        "Get the current OpenFlow flow table from the OVS switch. "
+        "Returns the full flow table including match rules, actions, "
+        "packet counts, and byte counts per flow.");
+    struct json *get_flows_args = json_object_create();
+    json_object_put(get_flows_tool, "arguments", get_flows_args);
+    json_array_add(tools_array, get_flows_tool);
+
+    // get_port_stats tool
+    struct json *get_port_stats_tool = json_object_create();
+    json_object_put_string(get_port_stats_tool, "name", "get_port_stats");
+    json_object_put_string(get_port_stats_tool, "description",
+        "Get live traffic statistics for all ports on the OVS switch. "
+        "Returns per-interface counters including rx_packets, tx_packets, "
+        "rx_bytes, tx_bytes, rx_errors, tx_errors, rx_dropped, tx_dropped.");
+    struct json *get_port_stats_args = json_object_create();
+    json_object_put(get_port_stats_tool, "arguments", get_port_stats_args);
+    json_array_add(tools_array, get_port_stats_tool);
+
+    // set_vlan tool
+    struct json *set_vlan_tool = json_object_create();
+    json_object_put_string(set_vlan_tool, "name", "set_vlan");
+    json_object_put_string(set_vlan_tool, "description",
+        "Set the VLAN tag on a specific port. Writes the VLAN tag to OVSDB "
+        "and immediately applies the configuration to the datapath.");
+    struct json *set_vlan_args = json_object_create();
+    json_object_put_string(set_vlan_args, "port", "string (required): The name of the port to configure (e.g. 'eth0', 'test-port')");
+    json_object_put_string(set_vlan_args, "vlan", "integer (required): The VLAN ID to assign (1-4094)");
+    json_object_put(set_vlan_tool, "arguments", set_vlan_args);
+    json_array_add(tools_array, set_vlan_tool);
+
+    // set_port_state tool
+    struct json *set_port_state_tool = json_object_create();
+    json_object_put_string(set_port_state_tool, "name", "set_port_state");
+    json_object_put_string(set_port_state_tool, "description",
+        "Enable or disable a port on the OVS switch. Sets the NETDEV_UP flag "
+        "on the port's underlying network device, taking effect immediately.");
+    struct json *set_port_state_args = json_object_create();
+    json_object_put_string(set_port_state_args, "port", "string (required): The name of the port (e.g. 'eth0', 'test-port')");
+    json_object_put_string(set_port_state_args, "state", "string (required): Either 'up' to enable or 'down' to disable");
+    json_object_put(set_port_state_tool, "arguments", set_port_state_args);
+    json_array_add(tools_array, set_port_state_tool);
+
+    json_object_put(result, "tools", tools_array);
+
+    send_json(client_fd, 200, "OK", result);
+    json_destroy(result);
+}
+
 //dispatcher
 
 static void mcp_dispatch(int client_fd, const char *body,struct ovsdb_idl *idl)
@@ -228,7 +299,9 @@ static void mcp_dispatch(int client_fd, const char *body,struct ovsdb_idl *idl)
     struct json *arguments = shash_find_data(request->object, "arguments");
 
     // route to handler
-    if (strcmp(tool, "get_ports") == 0) {
+    if (strcmp(tool, "get_tools") == 0) {
+        handle_get_tools(client_fd);
+    } else if (strcmp(tool, "get_ports") == 0) {
         handle_get_ports(client_fd,idl);
     } else if (strcmp(tool, "get_flows") == 0) {
         handle_get_flows(client_fd);
