@@ -91,6 +91,10 @@ EXTRA_DIST = \
 	.readthedocs.yaml \
 	appveyor.yml \
 	boot.sh \
+	ovs_agent/__init__.py \
+	ovs_agent/agent.py \
+	ovs_agent/.gitignore \
+	requirements.txt \
 	$(MAN_FRAGMENTS) \
 	$(MAN_ROOTS) \
 	.mailmap

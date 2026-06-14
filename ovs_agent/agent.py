@@ -32,15 +32,20 @@ def ovs_mcp(tool: str, arguments: dict = None) -> dict:
         payload["arguments"] = arguments
     try:
         r = requests.post(MCP_URL, json=payload, timeout=TIMEOUT)
+        print(f"DEBUG: Response status: {r.status_code}")
+        print(f"DEBUG: Response text: {r.text}")
         return r.json()
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.ConnectionError as e:
+        print(f"DEBUG: ConnectionError: {e}")
         return {
             "error": "Cannot reach MCP server.",
             "hint": "Make sure ovs-vswitchd is running on this host."
         }
-    except requests.exceptions.Timeout:
+    except requests.exceptions.Timeout as e:
+        print(f"DEBUG: Timeout: {e}")
         return {"error": "MCP server timed out."}
     except Exception as e:
+        print(f"DEBUG: Exception: {type(e).__name__}: {e}")
         return {"error": str(e)}
 
 

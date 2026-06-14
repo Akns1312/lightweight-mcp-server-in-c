@@ -381,12 +381,19 @@ void mcp_server_run(struct ovsdb_idl *idl)
     }
 
     char *body = strstr(buffer, "\r\n\r\n");
-    if (!body) {
-        send_error(client_fd, 400, "Bad Request", "no body");
-        close(client_fd);
-        return;
+    if (body) {
+        body += 4;
+    } else {
+        // Handle LF-only separators (Python requests library uses \n\n)
+        body = strstr(buffer, "\n\n");
+        if (body) {
+            body += 2;
+        } else {
+            send_error(client_fd, 400, "Bad Request", "no body");
+            close(client_fd);
+            return;
+        }
     }
-    body += 4;
 
     mcp_dispatch(client_fd, body, idl);
     close(client_fd);
