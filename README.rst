@@ -549,3 +549,218 @@ Create a test bridge:
 .. code-block:: bash
 
     sudo ovs-vsctl add-br br0
+
+---
+
+Module 6 – Python MCP Agent with Dynamic Tool Discovery
+=========================================================
+
+Files Added
+-----------
+
+* ``ovs_agent/__init__.py`` — Package initialization
+* ``ovs_agent/agent.py`` — Main agent implementation
+* ``requirements.txt`` — Python dependencies
+* ``ovs_agent/.env_example`` — Example environment configuration
+
+Overview
+--------
+
+A Python agent powered by Google's Generative AI (Gemini) that communicates with the MCP server.
+The agent uses a **two-stage workflow**:
+
+1. **Discovery Stage:** Call ``ovs_mcp(tool="get_tools")`` to fetch all available tools from the server
+2. **Execution Stage:** Call ``ovs_mcp(tool="<name>", arguments={...})`` to execute the desired tool
+
+Key Features
+~~~~~~~~~~~~
+
+* **Single Entry Point:** All MCP communication goes through ``ovs_mcp()`` function
+* **Dynamic Tool Discovery:** No hardcoded tool definitions on the client side
+* **Intelligent Behavior:** Distinguishes between general questions (direct replies) and switch queries (tool calls)
+* **Server-Driven Architecture:** Tool specifications come entirely from the server
+
+Architecture
+~~~~~~~~~~~~
+
+.. code-block:: text
+
+    User Query
+         │
+         ▼
+    [Agent] Does query need switch interaction?
+         │
+         ├─→ NO  → Reply directly (general knowledge)
+         │
+         └─→ YES → Call ovs_mcp(tool="get_tools")
+                   │
+                   ▼
+              Discover available tools & their signatures
+                   │
+                   ▼
+              Call ovs_mcp(tool="<selected>", arguments={...})
+                   │
+                   ▼
+              [MCP Server on localhost:8080]
+                   │
+                   ▼
+              Return tool result
+                   │
+                   ▼
+              Present result to user in plain English
+
+Implementation Notes
+~~~~~~~~~~~~~~~~~~~~
+
+**Single Tool Function:**
+
+The agent exposes only one public tool to the AI framework:
+
+.. code-block:: python
+
+    def ovs_mcp(tool: str, arguments: dict = None) -> dict:
+        """
+        Single entry point to the OVS MCP server.
+        All operations go through this unified interface.
+        """
+        payload = {"tool": tool}
+        if arguments:
+            payload["arguments"] = arguments
+        r = requests.post(MCP_URL, json=payload, timeout=TIMEOUT)
+        return r.json()
+
+**Two-Stage Workflow in System Prompt:**
+
+The agent's system prompt explicitly instructs it to:
+
+1. Discover tools first using ``get_tools``
+2. Study the response to understand available operations
+3. Route user requests appropriately (direct reply vs tool call)
+4. Only call tools when switch interaction is needed
+
+**No Tool Duplication:**
+
+Unlike traditional approaches where the client has hardcoded tool definitions that duplicate server specs,
+this architecture ensures:
+
+* **Single Source of Truth:** Server defines all tools
+* **No Sync Issues:** Adding new tools on server automatically available to agent
+* **Clean Separation:** Client focuses on orchestration, server on implementation
+
+Usage
+-----
+
+Setup Virtual Environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    cd /home/vaishnav/ovs
+    python3 -m venv .venv
+    source .venv/bin/activate
+
+Install Dependencies
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+    pip install -r requirements.txt
+
+Configure Agent
+~~~~~~~~~~~~~~~~
+
+Create ``ovs_agent/.env`` with your Google API credentials:
+
+.. code-block:: bash
+
+    cp ovs_agent/.env_example ovs_agent/.env
+    # Edit .env and add your GOOGLE_API_KEY
+
+Run Agent
+~~~~~~~~~
+
+.. code-block:: bash
+
+    source .venv/bin/activate
+    adk run ovs_agent/
+
+Example Interactions
+~~~~~~~~~~~~~~~~~~~~
+
+**Query: General Knowledge**
+
+.. code-block:: text
+
+    [user]: What is OpenFlow?
+    [agent]: OpenFlow is a communications protocol that gives access
+             to the forwarding plane of a network switch...
+             (Direct reply, no tools called)
+
+**Query: Switch Information**
+
+.. code-block:: text
+
+    [user]: Show me the flow table
+    [agent]: (Calls ovs_mcp(tool="get_tools") to discover tools)
+             (Calls ovs_mcp(tool="get_flows") to get flows)
+             (Presents result clearly to user)
+
+**Query: Configuration**
+
+.. code-block:: text
+
+    [user]: Set VLAN 100 on eth0
+    [agent]: (Discovers tools)
+             (Calls ovs_mcp(tool="set_vlan", arguments={"port":"eth0","vlan":100}))
+             (Confirms: "Successfully set VLAN 100 on port eth0")
+
+Tool Discovery Response
+~~~~~~~~~~~~~~~~~~~~~~~
+
+When the agent calls ``get_tools``, the server returns:
+
+.. code-block:: json
+
+    {
+      "action": "switch.get_tools",
+      "tools": [
+        {
+          "name": "get_ports",
+          "description": "Get the list of all ports and interfaces on the OVS switch...",
+          "arguments": {}
+        },
+        {
+          "name": "get_flows",
+          "description": "Get the current OpenFlow flow table...",
+          "arguments": {}
+        },
+        {
+          "name": "set_vlan",
+          "description": "Set the VLAN tag on a specific port...",
+          "arguments": {
+            "port": "string (required): The name of the port...",
+            "vlan": "integer (required): The VLAN ID (1-4094)"
+          }
+        },
+        ...
+      ]
+    }
+
+The agent uses this information to understand what operations are available and their signatures.
+
+Design Rationale
+~~~~~~~~~~~~~~~~
+
+**Why Dynamic Discovery?**
+
+* **Scalability:** New tools can be added to the server without updating client code
+* **Maintainability:** Tool documentation lives in one place (the server)
+* **Flexibility:** Different deployments can expose different tools
+* **Standards Compliance:** Follows MCP (Model Context Protocol) best practices
+
+**Why Single Entry Point?**
+
+* **Simplicity:** Agent only needs to understand one interface
+* **Consistency:** All errors handled uniformly
+* **Evolution:** Can add client-side logic (caching, retries) at one point
+* **Testing:** Easier to mock and test
