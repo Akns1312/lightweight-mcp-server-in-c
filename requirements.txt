@@ -1,2 +1,4 @@
 requests>=2.28.0
-google-adk
+google-adk[litellm]
+litellm
+ollama

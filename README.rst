@@ -555,59 +555,15 @@ Create a test bridge:
 Module 6 – Python MCP Agent with Dynamic Tool Discovery
 =========================================================
 
-Files Added
------------
-
-* ``ovs_agent/__init__.py`` — Package initialization
-* ``ovs_agent/agent.py`` — Main agent implementation
-* ``requirements.txt`` — Python dependencies
-* ``ovs_agent/.env_example`` — Example environment configuration
-
 Overview
 --------
 
-A Python agent powered by Google's Generative AI (Gemini) that communicates with the MCP server.
+A Python agent powered by a local LLM running on your desktop via Ollama that communicates with the MCP server.
 The agent uses a **two-stage workflow**:
 
 1. **Discovery Stage:** Call ``ovs_mcp(tool="get_tools")`` to fetch all available tools from the server
 2. **Execution Stage:** Call ``ovs_mcp(tool="<name>", arguments={...})`` to execute the desired tool
 
-Key Features
-~~~~~~~~~~~~
-
-* **Single Entry Point:** All MCP communication goes through ``ovs_mcp()`` function
-* **Dynamic Tool Discovery:** No hardcoded tool definitions on the client side
-* **Intelligent Behavior:** Distinguishes between general questions (direct replies) and switch queries (tool calls)
-* **Server-Driven Architecture:** Tool specifications come entirely from the server
-
-Architecture
-~~~~~~~~~~~~
-
-.. code-block:: text
-
-    User Query
-         │
-         ▼
-    [Agent] Does query need switch interaction?
-         │
-         ├─→ NO  → Reply directly (general knowledge)
-         │
-         └─→ YES → Call ovs_mcp(tool="get_tools")
-                   │
-                   ▼
-              Discover available tools & their signatures
-                   │
-                   ▼
-              Call ovs_mcp(tool="<selected>", arguments={...})
-                   │
-                   ▼
-              [MCP Server on localhost:8080]
-                   │
-                   ▼
-              Return tool result
-                   │
-                   ▼
-              Present result to user in plain English
 
 Implementation Notes
 ~~~~~~~~~~~~~~~~~~~~
@@ -669,12 +625,22 @@ Install Dependencies
 Configure Agent
 ~~~~~~~~~~~~~~~~
 
-Create ``ovs_agent/.env`` with your Google API credentials:
+Create ``ovs_agent/.env`` with your Ollama configuration:
 
 .. code-block:: bash
 
     cp ovs_agent/.env_example ovs_agent/.env
-    # Edit .env and add your GOOGLE_API_KEY
+    # Edit .env if needed (default Ollama URL is http://localhost:11434)
+
+Make sure Ollama is running on your desktop:
+
+.. code-block:: bash
+
+    # On your desktop, start Ollama
+    ollama serve
+
+    # Pull the  model 
+    ollama pull <model_name>
 
 Run Agent
 ~~~~~~~~~
@@ -714,53 +680,4 @@ Example Interactions
              (Calls ovs_mcp(tool="set_vlan", arguments={"port":"eth0","vlan":100}))
              (Confirms: "Successfully set VLAN 100 on port eth0")
 
-Tool Discovery Response
-~~~~~~~~~~~~~~~~~~~~~~~
 
-When the agent calls ``get_tools``, the server returns:
-
-.. code-block:: json
-
-    {
-      "action": "switch.get_tools",
-      "tools": [
-        {
-          "name": "get_ports",
-          "description": "Get the list of all ports and interfaces on the OVS switch...",
-          "arguments": {}
-        },
-        {
-          "name": "get_flows",
-          "description": "Get the current OpenFlow flow table...",
-          "arguments": {}
-        },
-        {
-          "name": "set_vlan",
-          "description": "Set the VLAN tag on a specific port...",
-          "arguments": {
-            "port": "string (required): The name of the port...",
-            "vlan": "integer (required): The VLAN ID (1-4094)"
-          }
-        },
-        ...
-      ]
-    }
-
-The agent uses this information to understand what operations are available and their signatures.
-
-Design Rationale
-~~~~~~~~~~~~~~~~
-
-**Why Dynamic Discovery?**
-
-* **Scalability:** New tools can be added to the server without updating client code
-* **Maintainability:** Tool documentation lives in one place (the server)
-* **Flexibility:** Different deployments can expose different tools
-* **Standards Compliance:** Follows MCP (Model Context Protocol) best practices
-
-**Why Single Entry Point?**
-
-* **Simplicity:** Agent only needs to understand one interface
-* **Consistency:** All errors handled uniformly
-* **Evolution:** Can add client-side logic (caching, retries) at one point
-* **Testing:** Easier to mock and test

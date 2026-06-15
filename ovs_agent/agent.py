@@ -1,5 +1,6 @@
 import requests
 from google.adk.agents import Agent
+from google.adk.models.lite_llm import LiteLlm
 
 
 MCP_URL = "http://localhost:8080/mcp"
@@ -53,7 +54,7 @@ def ovs_mcp(tool: str, arguments: dict = None) -> dict:
 
 root_agent = Agent(
     name="ovs_switch_agent",
-    model="gemini-2.5-flash",
+    model=LiteLlm(model="ollama_chat/gemma4:31b-cloud"),
     description=(
         "An AI assistant for managing and querying an Open vSwitch (OVS) "
         "software switch in real time."
