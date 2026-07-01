@@ -93,7 +93,7 @@ EXTRA_DIST = \
 	boot.sh \
 	ovs_agent/__init__.py \
 	ovs_agent/agent.py \
-	ovs_agent/.gitignore \
+	ovs_agent/.env_example \
 	requirements.txt \
 	$(MAN_FRAGMENTS) \
 	$(MAN_ROOTS) \

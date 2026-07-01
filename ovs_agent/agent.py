@@ -54,7 +54,9 @@ def ovs_mcp(tool: str, arguments: dict = None) -> dict:
 
 root_agent = Agent(
     name="ovs_switch_agent",
-    model=LiteLlm(model="ollama_chat/gemma4:31b-cloud"),
+    #model=LiteLlm(model="ollama_chat/qwen3:4b"),
+    model="gemini-3.1-flash-lite",
+
     description=(
         "An AI assistant for managing and querying an Open vSwitch (OVS) "
         "software switch in real time."
@@ -104,6 +106,8 @@ root_agent = Agent(
 
     5. Keep responses concise. Use bullet points or small tables when
        presenting multiple ports, flows, or other complex data.
+
+    6. Only print out the answer. DO NOT PRINT OUT YOUR THOUGH PROCESS TO THE USER
 
     ## Example workflow
 
